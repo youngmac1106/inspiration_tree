@@ -40,8 +40,8 @@ def load_tokens(pipe, data, device):
 
 
 def save_rev_samples(output_path, path_to_embed, model_id, device):
-    if not os.path.exists(f"{output_path}/final_samples"):
-        os.mkdir(f"{output_path}/final_samples")
+    # if not os.path.exists(f"{output_path}/final_samples"):
+    #     os.mkdir(f"{output_path}/final_samples")
     prompts_title = ["Vl", "Vr", "Vl Vr"]
     prompt_to_vec = {}
     assert os.path.exists(path_to_embed)
@@ -54,14 +54,15 @@ def save_rev_samples(output_path, path_to_embed, model_id, device):
         prompts.append(w_)
     prompts.append(" ".join(combined))
 
-    pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(device)
-    load_tokens(pipe, prompt_to_vec, device)
+    with torch.no_grad():
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(device)
+        load_tokens(pipe, prompt_to_vec, device)
 
     print("Prompts loaded to pipe ...")
     print(prompt_to_vec.keys())
 
     gen_seeds = [4321, 95, 11, 87654]
-    num_images_per_seed = 10
+    num_images_per_seed = 8
 
     plt.figure(figsize=(20,20))
     for i in range(len(prompts)):
@@ -87,11 +88,12 @@ def save_rev_samples(output_path, path_to_embed, model_id, device):
 
 def generate_training_data(code_path, node, output_path, device, model_id, model_id_clip):
     node_code = torch.load(code_path)[node]
-    pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(device)
-    load_tokens(pipe, {"<*>": node_code}, device)
+    with torch.no_grad():
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(device)
+        load_tokens(pipe, {"<*>": node_code}, device)
     print("Prompts loaded to pipe ...")
     gen_seeds = [4321, 95, 11, 87654]
-    num_images_per_seed = 10
+    num_images_per_seed = 8
 
     clip_model = CLIPModel.from_pretrained(model_id_clip)
     preprocess = CLIPImageProcessor.from_pretrained(model_id_clip)

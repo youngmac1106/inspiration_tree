@@ -154,7 +154,7 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="runwayml/stable-diffusion-v1-5",
+        default="/root/autodl-tmp/cache/models--runwayml--stable-diffusion-v1-5/snapshots/1d0c4ebf6ff58a5caecab40fa1406526bca4b5b9",
         required=False,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -172,13 +172,13 @@ def parse_args():
         help="Pretrained tokenizer name or path if not the same as model_name",
     )
     parser.add_argument(
-        "--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data."
+        "--train_data_dir", type=str, default='/root/autodl-tmp/inspiration_tree/input_concepts/cat_sculpture/v0', required=False, help="A folder containing the training data."
     )
     parser.add_argument(
         "--placeholder_token",
         type=str,
-        default=None,
-        required=True,
+        default="<*> <&>",
+        required=False,
         help="A token to use as a placeholder for the concept.",
     )
     parser.add_argument(
@@ -192,7 +192,7 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--seed", type=int, default=1111, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -212,7 +212,7 @@ def parse_args():
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=5000,
+        default=201,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
@@ -298,7 +298,7 @@ def parse_args():
     parser.add_argument(
         "--validation_prompt",
         type=str,
-        default=None,
+        default="<*>,<&>,<*> <&>",
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
@@ -310,7 +310,7 @@ def parse_args():
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=50,
+        default=100,
         help=(
             "Run validation every X steps. Validation consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`"
@@ -614,17 +614,23 @@ def main():
     token_embeds = text_encoder.get_input_embeddings().weight.data
 
     # Initilize the pretrained tokens in case we refine the tree
+    pretrained_token_ids = []
     if args.path_to_learned_embeds is not None:
         added_placeholder_token_ids = tokenizer.convert_tokens_to_ids(added_placeholders)
         assert os.path.exists(f"{args.path_to_learned_embeds}")
         learned_embeds_dict = torch.load(f"{args.path_to_learned_embeds}")
         for placeholder, placeholder_id in zip(added_placeholders, added_placeholder_token_ids):
             print(placeholder, placeholder_id)
-            token_embeds[placeholder_id] = learned_embeds_dict[placeholder].to(accelerator.device).to(dtype=torch.float16)
-
+            try:
+                token_embeds[placeholder_id] = learned_embeds_dict[placeholder].to(accelerator.device).to(dtype=torch.float16)
+                pretrained_token_ids.append(placeholder_id)
+            except:
+                print(placeholder,placeholder_id,"using origin")
     
     # Initialise the newly added placeholder token with the embeddings of the initializer token
     for initializer_token_id_, placeholder_token_id_ in zip(initializer_token_ids, placeholder_token_ids):
+        if placeholder_token_id_ in pretrained_token_ids:
+            continue
         print(f"initializer_token_id_ {initializer_token_id_}, placeholder_token_id_ {placeholder_token_id_}")
         token_embeds[placeholder_token_id_] = token_embeds[initializer_token_id_]
 
@@ -632,6 +638,10 @@ def main():
     token_ids_opt = placeholder_token_ids if args.opt_placeholders is None else tokenizer.convert_tokens_to_ids(args.opt_placeholders.split(" "))
     print("token_ids_opt",token_ids_opt)
     index_no_updates = torch.Tensor(np.logical_not(np.array([x in token_ids_opt for x in torch.arange(len(tokenizer))]))).bool()
+
+    # # don't update the user-specific prompt
+    # index_no_updates[-2] = True
+
     print("index_no_updates")
     print(index_no_updates[-10:])
 

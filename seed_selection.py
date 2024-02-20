@@ -31,10 +31,12 @@ import utils
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path_to_new_tokens", type=str, help="Path to directory with the new embeddings")
-    parser.add_argument("--node", type=str, help="Path to directory with the new embeddings")
-    parser.add_argument("--model_id", type=str, default="runwayml/stable-diffusion-v1-5")
-    parser.add_argument("--model_id_clip", type=str, default="openai/clip-vit-base-patch32")
+    parser.add_argument("--path_to_new_tokens", type=str,default='/root/autodl-tmp/inspiration_tree/outputs/cat_sculpture', help="Path to directory with the new embeddings")
+    parser.add_argument("--node", type=str,default='v0', help="Path to directory with the new embeddings")
+    parser.add_argument("--model_id", type=str, default="/root/autodl-tmp/cache/models--runwayml--stable-diffusion-v1-5/snapshots/1d0c4ebf6ff58a5caecab40fa1406526bca4b5b9")
+    parser.add_argument("--model_id_clip", type=str, default="/root/autodl-tmp/cache/models--openai--clip-vit-base-patch32/snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb")
+    parser.add_argument("--seeds",type=int,nargs='+',default=[0,111,1000,1234])
+
     args = parser.parse_args()
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -67,15 +69,16 @@ def get_tree_tokens(args, seeds):
 if __name__ == "__main__":
     args = parse_args()
     if not os.path.exists(f"{args.path_to_new_tokens}/{args.node}/consistency_test"):
-        os.mkdir(f"{args.path_to_new_tokens}/{args.node}/consistency_test")
-    seeds = [0, 1000, 1234, 111]
+        os.makedirs(f"{args.path_to_new_tokens}/{args.node}/consistency_test",exist_ok=True)
+    seeds = args.seeds
     prompts_title = ["Vl", "Vr", "Vl Vr"]
     prompt_to_vec, prompts_per_seed = get_tree_tokens(args, seeds)
     # prompts_per_seed is {seed: ["<*_seed>", "<&_seed>", "<*_seed> <&_seed>"]}
     print(prompts_per_seed)
     
-    pipe = StableDiffusionPipeline.from_pretrained(args.model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(args.device)
-    utils.load_tokens(pipe, prompt_to_vec, args.device)
+    with torch.no_grad():
+        pipe = StableDiffusionPipeline.from_pretrained(args.model_id, torch_dtype=torch.float16, safety_checker=None, requires_safety_checker=False).to(args.device)
+        utils.load_tokens(pipe, prompt_to_vec, args.device)
 
     print("Prompts loaded to pipe ...")
     print(prompt_to_vec.keys())
@@ -87,7 +90,7 @@ if __name__ == "__main__":
     prompts_to_clip_embeds = {}
     final_sim_score = {}
     gen_seeds = [4321, 95, 11, 87654]
-    num_images_per_seed = 10
+    num_images_per_seed = 8
     for seed in seeds:
         plt.figure(figsize=(20,15))
         prompts_to_images[seed] = {}

@@ -1,3 +1,4 @@
+
 """
 Copyright 2023 Google LLC
 
@@ -24,33 +25,38 @@ from shutil import copyfile
 import utils
 import glob
 
-MODEL_ID = "runwayml/stable-diffusion-v1-5"
-MODEL_ID_CLIP = "openai/clip-vit-base-patch32"
+MODEL_ID = "/root/autodl-tmp/cache/models--runwayml--stable-diffusion-v1-5/snapshots/1d0c4ebf6ff58a5caecab40fa1406526bca4b5b9"
+MODEL_ID_CLIP = "/root/autodl-tmp/cache/models--openai--clip-vit-base-patch32/snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-def parse_args():
+def parse_args(): 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--parent_data_dir", type=str, help="Path to directory with the training samples")
-    parser.add_argument("--node", type=str, help="which node to split (v0, v1..) the corresponding images should be under 'parent_data_dir/vi'")
-    parser.add_argument("--test_name", type=str, default="test", help="your GPU id")
+    parser.add_argument("--parent_data_dir", type=str, default='red_bird/',help="Path to directory with the training samples")
+    parser.add_argument("--node", type=str,default='v0', help="which node to split (v0, v1..) the corresponding images should be under 'parent_data_dir/vi'")
+    parser.add_argument("--test_name", type=str, default="fix_sculpture", help="your GPU id")
     parser.add_argument("--max_train_steps", type=int, default=201, help="your GPU id")
     parser.add_argument("--GPU_ID", type=int, default=0, help="your GPU id")
     parser.add_argument("--multiprocess", type=int, default=0)
-    
+    parser.add_argument("--initializer_token",type=str,default ="object object")
+    parser.add_argument("--seeds",type=int,nargs='+',default=[0,111,1000,1234])
+    parser.add_argument("--path_to_learned_embeds",type=str,default=None)
     args = parser.parse_args()
     return args
 
 
 def run_seed(args, seed):
     print("seed", seed)
+    
     exit_code = sp.run(["accelerate", "launch", "--gpu_ids", f"{args.GPU_ID}", "textual_inversion_decomposed.py",
                         "--train_data_dir", f"input_concepts/{args.parent_data_dir}/{args.node}",
                         "--placeholder_token", "<*> <&>",
                         "--validation_prompt", "<*>,<&>,<*> <&>",
-                        "--output_dir", f"outputs/{args.parent_data_dir}/{args.node}/{args.test_name}_seed{seed}/",
+                        "--output_dir", f"outputs/{args.parent_data_dir}/{args.node}/{args.node}_seed{seed}/",
                         "--seed", f"{seed}",
                         "--max_train_steps", f"{args.max_train_steps}",
-                        "--validation_steps", "100"
+                        "--validation_steps", "100",
+                        "--initializer_token", args.initializer_token,
+                        # "--path_to_learned_embeds", args.path_to_learned_embeds,
                         ])
     if exit_code.returncode:
         sys.exit(1)
@@ -75,7 +81,8 @@ if __name__ == "__main__":
         ncpus = 10
         P = mp.Pool(ncpus)  # Generate pool of workers
 
-    seeds = [0, 1000, 1234, 111]
+    seeds = args.seeds
+    # seeds = [0]
     for seed in seeds:
         if args.multiprocess:
             P.apply_async(run_seed, (args, seed))
@@ -90,9 +97,11 @@ if __name__ == "__main__":
     # Run seed selection
     sp.run(["python", "seed_selection.py",
             "--path_to_new_tokens", f"outputs/{args.parent_data_dir}", 
-            "--node", f"{args.node}"])
+            "--node", f"{args.node}",
+            "--seeds",]+[str(s) for s in seeds])
     seeds_scores = torch.load(f"outputs/{args.parent_data_dir}/{args.node}/consistency_test/seed_scores.bin")
     best_seed = max(seeds_scores, key=lambda k: seeds_scores[k])
+    # best_seed = 1000
     print(f"Best seed [{best_seed}]")
 
     # Continue textual inversion
@@ -101,12 +110,13 @@ if __name__ == "__main__":
                         "--train_data_dir", f"input_concepts/{args.parent_data_dir}/{args.node}",
                         "--placeholder_token", "<*> <&>",
                         "--validation_prompt", "<*>,<&>,<*> <&>",
-                        "--output_dir", f"outputs/{args.parent_data_dir}/{args.node}/{args.test_name}_seed{best_seed}/",
+                        "--output_dir", f"outputs/{args.parent_data_dir}/{args.node}/{args.node}_seed{best_seed}/",
                         "--seed", f"{best_seed}",
                         "--max_train_steps", f"{1000}",
                         "--validation_steps", "100",
                         "--resume_from_checkpoint", f"outputs/{args.parent_data_dir}/{args.node}/{args.node}_seed{best_seed}/checkpoint-200",
-                        "--checkpointing_steps", "2000"
+                        "--checkpointing_steps", "2000",
+                        "--initializer_token", args.initializer_token,
                         ])
 
     copyfile(f"outputs/{args.parent_data_dir}/{args.node}/{args.node}_seed{best_seed}/learned_embeds.bin",
@@ -115,5 +125,6 @@ if __name__ == "__main__":
          f"outputs/{args.parent_data_dir}/{args.node}/learned_embeds-steps-1000.bin")
     
     # Saves some samples of the final node 
-    utils.save_children_nodes(args.node, f"outputs/{args.parent_data_dir}/{args.node}/learned_embeds-steps-1000.bin", f"input_concepts/{args.parent_data_dir}", device, MODEL_ID, MODEL_ID_CLIP)
-    utils.save_rev_samples(f"outputs/{args.parent_data_dir}/{args.node}", f"outputs/{args.parent_data_dir}/{args.node}/learned_embeds-steps-1000.bin", MODEL_ID, device)
+    with torch.no_grad():
+        # utils.save_children_nodes(args.node, f"outputs/{args.parent_data_dir}/{args.node}/learned_embeds-steps-1000.bin", f"input_concepts/{args.parent_data_dir}", device, MODEL_ID, MODEL_ID_CLIP)
+        utils.save_rev_samples(f"outputs/{args.parent_data_dir}/{args.node}", f"outputs/{args.parent_data_dir}/{args.node}/learned_embeds-steps-1000.bin", MODEL_ID, device)

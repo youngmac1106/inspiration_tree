@@ -1,0 +1,1 @@
+python main_multiseed.py --parent_data_dir "cat_sculpture/" --node v0 --test_name "v0" --GPU_ID "0" --multiprocess 0
